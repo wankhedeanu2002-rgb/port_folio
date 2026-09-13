@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { motion, useInView } from "framer-motion";
+import { motion, useInView, useScroll, useTransform } from "framer-motion";
 import { terminalLines } from "@/data/site";
 import { useReducedMotion } from "@/hooks/useScroll";
 import { useSound } from "@/context/SoundContext";
@@ -15,6 +15,15 @@ export function Terminal() {
   const hasAutoPlayedRef = useRef(false);
 
   const isInView = useInView(sectionRef, { once: true, amount: 0.25, margin: "0px 0px -8% 0px" });
+
+  const { scrollYProgress } = useScroll({
+    target: sectionRef,
+    offset: ["start 0.95", "start 0.42"],
+  });
+
+  const panelY = useTransform(scrollYProgress, [0, 1], [-72, 0]);
+  const panelOpacity = useTransform(scrollYProgress, [0, 0.35, 1], [0.25, 0.85, 1]);
+  const panelScale = useTransform(scrollYProgress, [0, 1], [0.96, 1]);
 
   const [visibleLines, setVisibleLines] = useState(0);
   const [typing, setTyping] = useState(false);
@@ -76,7 +85,18 @@ export function Terminal() {
   return (
     <section ref={sectionRef} className="section-padding">
       <div className="container-narrow">
-        <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[#0c0c0c] font-mono text-sm shadow-2xl shadow-black/40">
+        <motion.div
+          className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[#0c0c0c] font-mono text-sm shadow-2xl shadow-black/40 will-change-transform"
+          style={
+            reduced
+              ? undefined
+              : {
+                  y: panelY,
+                  opacity: panelOpacity,
+                  scale: panelScale,
+                }
+          }
+        >
           <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-3 py-2.5 sm:px-4 sm:py-3">
             <div className="flex min-w-0 items-center gap-2">
               <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-zinc-700 sm:h-3 sm:w-3" />
@@ -116,7 +136,7 @@ export function Terminal() {
 
             {hasFinished && !typing && <TerminalPrompt />}
           </div>
-        </div>
+        </motion.div>
       </div>
     </section>
   );

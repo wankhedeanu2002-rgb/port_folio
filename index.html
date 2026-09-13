@@ -16,6 +16,7 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://anandvankhede.dev" />
     <link rel="canonical" href="https://anandvankhede.dev" />
+    <link rel="preload" href="/audio/mixkit-serene-view-443.mp3" as="audio" type="audio/mpeg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -25,6 +26,15 @@
     <title>Anand Vankhede — Python Backend Developer</title>
   </head>
   <body>
+    <audio
+      id="ambient-music"
+      src="/audio/mixkit-serene-view-443.mp3"
+      loop
+      preload="auto"
+      playsinline
+      autoplay
+      muted
+    ></audio>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -7,24 +7,29 @@ export type SfxType =
   | "typing"
   | "transition"
   | "activate"
-  | "dataFlow";
+  | "dataFlow"
+  | "musicResume";
 
 const MUSIC_SRC = "/audio/mixkit-serene-view-443.mp3";
-const MUSIC_TARGET = 0.3;
+const MUSIC_TARGET = 0.22;
+const MUSIC_RESTART_FADE_MS = 1400;
+const MUSIC_RESTART_COOLDOWN = 900;
 const FADE_IN_MS = 2800;
-const FADE_OUT_MS = 800;
 const HOVER_COOLDOWN = 200;
 const TYPING_COOLDOWN = 120;
 const STORAGE_KEY = "portfolio-audio-enabled";
 
 let enabled = false;
 let musicPlaying = false;
+let musicMutedForAutoplay = false;
 let sfxCtx: AudioContext | null = null;
 let musicEl: HTMLAudioElement | null = null;
 let musicFadeTimer: ReturnType<typeof setInterval> | null = null;
 let lastHover = 0;
 let lastTyping = 0;
+let lastMusicRestart = 0;
 let architectureSoundPlayed = false;
+let unlockListenersAttached = false;
 
 function getSfxContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -36,12 +41,35 @@ function getSfxContext(): AudioContext | null {
 
 function getMusicElement(): HTMLAudioElement {
   if (!musicEl) {
-    musicEl = new Audio(MUSIC_SRC);
-    musicEl.loop = true;
-    musicEl.preload = "auto";
-    musicEl.volume = 0;
+    const existing = document.getElementById("ambient-music");
+    if (existing instanceof HTMLAudioElement) {
+      musicEl = existing;
+    } else {
+      musicEl = new Audio(MUSIC_SRC);
+      musicEl.loop = true;
+      musicEl.preload = "auto";
+      musicEl.volume = 0;
+      musicEl.autoplay = true;
+      musicEl.setAttribute("playsinline", "");
+    }
   }
   return musicEl;
+}
+
+function waitForCanPlay(el: HTMLAudioElement, timeoutMs = 5000): Promise<void> {
+  if (el.readyState >= 2) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    const done = () => resolve();
+    el.addEventListener("canplaythrough", done, { once: true });
+    el.addEventListener("canplay", done, { once: true });
+    el.addEventListener("error", done, { once: true });
+    window.setTimeout(done, timeoutMs);
+  });
+}
+
+function isAudibleMusic(el: HTMLAudioElement): boolean {
+  return !el.paused && !el.ended && !el.muted && el.volume >= MUSIC_TARGET * 0.08;
 }
 
 async function resumeSfxContext(): Promise<boolean> {
@@ -131,10 +159,61 @@ function playNoise(duration: number, volume: number) {
   source.start(t);
 }
 
+function attachGlobalUnlockListeners(): void {
+  if (unlockListenersAttached || typeof window === "undefined") return;
+  unlockListenersAttached = true;
+
+  const attempt = () => {
+    if (localStorage.getItem(STORAGE_KEY) === "false") return;
+    void ensureMusicPlaying();
+  };
+
+  document.addEventListener("pointerdown", attempt, { capture: true, passive: true });
+  document.addEventListener("touchstart", attempt, { capture: true, passive: true });
+  document.addEventListener("keydown", attempt, { capture: true, passive: true });
+}
+
+async function tryUnmuteMusic(): Promise<boolean> {
+  const el = getMusicElement();
+  const fromVolume = el.volume;
+
+  try {
+    el.muted = false;
+    await el.play();
+    musicMutedForAutoplay = false;
+    musicPlaying = true;
+    clearMusicFade();
+    fadeMusicVolume(fromVolume > 0.001 ? fromVolume : 0, MUSIC_TARGET, FADE_IN_MS);
+    return true;
+  } catch {
+    el.muted = true;
+    musicMutedForAutoplay = true;
+    try {
+      if (el.paused) await el.play();
+      musicPlaying = !el.paused;
+      return musicPlaying;
+    } catch {
+      return false;
+    }
+  }
+}
+
 async function startMusic(): Promise<boolean> {
   const el = getMusicElement();
 
+  if (!el.paused && isAudibleMusic(el)) {
+    musicPlaying = true;
+    musicMutedForAutoplay = false;
+    return true;
+  }
+
+  if (!el.paused && (el.muted || el.volume < MUSIC_TARGET * 0.5)) {
+    return tryUnmuteMusic();
+  }
+
   try {
+    el.muted = false;
+    musicMutedForAutoplay = false;
     el.volume = 0;
     if (el.paused) {
       await el.play();
@@ -143,25 +222,45 @@ async function startMusic(): Promise<boolean> {
     fadeMusicVolume(0, MUSIC_TARGET, FADE_IN_MS);
     return true;
   } catch {
-    musicPlaying = false;
-    el.volume = 0;
     try {
-      el.pause();
+      el.muted = true;
+      el.volume = 0;
+      if (el.paused) {
+        await el.play();
+      }
+      musicMutedForAutoplay = true;
+      musicPlaying = true;
+      window.setTimeout(() => {
+        void tryUnmuteMusic();
+      }, 120);
+      return true;
     } catch {
-      /* ignore */
+      musicPlaying = false;
+      musicMutedForAutoplay = false;
+      el.volume = 0;
+      try {
+        el.pause();
+      } catch {
+        /* ignore */
+      }
+      return false;
     }
-    return false;
   }
 }
 
-function stopMusic() {
-  const el = getMusicElement();
-  const current = el.volume;
-  fadeMusicVolume(current, 0, FADE_OUT_MS, () => {
-    el.pause();
-    el.volume = 0;
-    musicPlaying = false;
-  });
+export async function unlockMusicPlayback(): Promise<void> {
+  if (!enabled) return;
+
+  await resumeSfxContext();
+
+  if (musicMutedForAutoplay || getMusicElement().muted) {
+    await tryUnmuteMusic();
+    return;
+  }
+
+  if (!musicPlaying || getMusicElement().paused) {
+    await startMusic();
+  }
 }
 
 export function isAudioEnabled(): boolean {
@@ -169,35 +268,43 @@ export function isAudioEnabled(): boolean {
 }
 
 export function isMusicPlaying(): boolean {
-  return musicPlaying && enabled;
+  if (!enabled) return false;
+  const el = musicEl ?? (document.getElementById("ambient-music") as HTMLAudioElement | null);
+  if (el) {
+    return isAudibleMusic(el) || (!el.paused && !el.ended && el.muted);
+  }
+  return musicPlaying;
 }
 
 export function setAudioEnabled(value: boolean): void {
   enabled = value;
 }
 
-export async function enableAudio(): Promise<boolean> {
-  const sfxOk = await resumeSfxContext();
-  if (!sfxOk) return false;
-
+export async function enableAudio(options?: { cue?: boolean }): Promise<boolean> {
+  const shouldCue = options?.cue !== false;
   enabled = true;
 
-  playActivate();
+  void resumeSfxContext().then((sfxOk) => {
+    if (shouldCue && sfxOk) playActivate();
+  });
 
   const musicOk = await startMusic();
-  if (!musicOk) {
-    enabled = true;
-    return true;
+  if (musicMutedForAutoplay) {
+    void tryUnmuteMusic();
   }
 
-  return true;
+  return musicOk || musicPlaying;
 }
 
 export async function disableAudio(): Promise<void> {
   enabled = false;
   musicPlaying = false;
+  musicMutedForAutoplay = false;
   clearMusicFade();
-  stopMusic();
+  const el = getMusicElement();
+  el.pause();
+  el.muted = false;
+  el.volume = 0;
 }
 
 export async function toggleAudio(): Promise<boolean> {
@@ -206,6 +313,58 @@ export async function toggleAudio(): Promise<boolean> {
     return false;
   }
   return enableAudio();
+}
+
+export function playMusicResume(): void {
+  if (!enabled) return;
+  void resumeSfxContext().then(() => {
+    playTone(174, 0.45, 0.05, "sine");
+    window.setTimeout(() => playTone(220, 0.55, 0.045, "sine"), 140);
+    window.setTimeout(() => playTone(277, 0.65, 0.035, "sine"), 280);
+  });
+}
+
+export async function restartBackgroundMusic(): Promise<void> {
+  if (!enabled) return;
+
+  const now = Date.now();
+  if (now - lastMusicRestart < MUSIC_RESTART_COOLDOWN) return;
+  lastMusicRestart = now;
+
+  await resumeSfxContext();
+  await unlockMusicPlayback();
+
+  const el = getMusicElement();
+  el.muted = false;
+  musicMutedForAutoplay = false;
+  el.currentTime = 0;
+  clearMusicFade();
+
+  try {
+    if (el.paused) {
+      await el.play();
+    }
+    musicPlaying = true;
+    fadeMusicVolume(0, MUSIC_TARGET, MUSIC_RESTART_FADE_MS);
+    playMusicResume();
+  } catch {
+    musicPlaying = false;
+  }
+}
+
+export function isInteractiveAudioTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+
+  return Boolean(
+    target.closest(
+      'button, a[href], input, textarea, select, summary, label, [role="button"], [role="link"], [role="tab"]',
+    ),
+  );
+}
+
+export function isMobileAudioContext(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(max-width: 1023px)").matches;
 }
 
 export function playActivate(): void {
@@ -307,6 +466,9 @@ export function playSfx(type: SfxType): void {
     case "dataFlow":
       playDataFlow();
       break;
+    case "musicResume":
+      playMusicResume();
+      break;
   }
 }
 
@@ -318,4 +480,71 @@ export const setSoundEnabled = setAudioEnabled;
 export const playSound = playSfx;
 export async function primeSound(): Promise<boolean> {
   return enableAudio();
+}
+
+export async function ensureMusicPlaying(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  if (localStorage.getItem(STORAGE_KEY) === "false") return false;
+
+  enabled = true;
+  const el = getMusicElement();
+  el.volume = el.volume > MUSIC_TARGET ? MUSIC_TARGET : el.volume;
+
+  if (el.readyState < 2) {
+    await waitForCanPlay(el);
+  }
+
+  if (!el.paused && !el.muted && el.volume >= MUSIC_TARGET * 0.05) {
+    musicPlaying = true;
+    musicMutedForAutoplay = false;
+    return true;
+  }
+
+  if (!el.paused && el.muted) {
+    el.volume = 0;
+    return tryUnmuteMusic();
+  }
+
+  if (!el.paused && el.volume < MUSIC_TARGET * 0.5) {
+    musicPlaying = true;
+    clearMusicFade();
+    fadeMusicVolume(el.volume, MUSIC_TARGET, FADE_IN_MS);
+    return true;
+  }
+
+  if (el.paused) {
+    return startMusic();
+  }
+
+  return tryUnmuteMusic();
+}
+
+export async function bootstrapAudioOnLoad(): Promise<void> {
+  if (typeof window === "undefined") return;
+
+  const el = getMusicElement();
+  el.volume = 0;
+
+  if (localStorage.getItem(STORAGE_KEY) === "false") {
+    enabled = false;
+    el.pause();
+    return;
+  }
+
+  enabled = true;
+  attachGlobalUnlockListeners();
+
+  await ensureMusicPlaying();
+
+  const retry = () => {
+    if (localStorage.getItem(STORAGE_KEY) === "false") return;
+    void ensureMusicPlaying();
+  };
+
+  window.addEventListener("pageshow", retry);
+  window.addEventListener("load", retry);
+
+  for (const ms of [200, 700, 1500, 3000]) {
+    window.setTimeout(retry, ms);
+  }
 }

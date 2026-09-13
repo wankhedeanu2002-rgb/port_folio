@@ -48,8 +48,8 @@ export function ProfilePortrait({ delay = 0.5 }: ProfilePortraitProps) {
               key={tag}
               className="absolute z-20 hidden rounded-full border border-[var(--color-border)] bg-black/75 px-3 py-1.5 font-mono text-[10px] tracking-wider text-zinc-300 backdrop-blur-md md:block"
               style={{
-                top: `${[8, 18, 78, 86, 38, 52][i]}%`,
-                left: `${[-8, 92, -6, 90, -18, 96][i]}%`,
+                top: `${[8, 18, 78, 86, 40, 52][i]}%`,
+                left: `${[-6, 90, -4, 88, -6, 90][i]}%`,
               }}
               animate={{ y: [0, -5, 0] }}
               transition={{

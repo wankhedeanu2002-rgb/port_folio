@@ -21,7 +21,7 @@ export function Footer() {
   };
 
   return (
-    <footer className="relative mt-0 overflow-hidden border-t border-white/[0.08] bg-[linear-gradient(180deg,#09090b_0%,#030303_55%,#020202_100%)] pb-[max(5rem,calc(4.5rem+env(safe-area-inset-bottom)))] sm:pb-[max(5.5rem,calc(4.5rem+env(safe-area-inset-bottom)))]">
+    <footer className="relative mt-0 overflow-hidden border-t border-white/[0.08] bg-[linear-gradient(180deg,#09090b_0%,#030303_55%,#020202_100%)] pb-0">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-400/30 to-transparent" />
 
       <div className="pointer-events-none absolute -left-32 top-1/4 h-64 w-64 rounded-full bg-indigo-600/10 blur-3xl" />
@@ -134,7 +134,7 @@ export function Footer() {
         </motion.div>
       </div>
 
-      <div className="footer-watermark-zone relative z-[1] -mt-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:-mt-2 sm:pb-0">
+      <div className="footer-watermark-zone relative z-[1] -mt-1 sm:-mt-2">
         <p className="anand-watermark" aria-hidden="true">
           ANAND
         </p>

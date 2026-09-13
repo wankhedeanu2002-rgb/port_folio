@@ -208,6 +208,17 @@ body {
   overflow: hidden;
 }
 
+@media (max-width: 639px) {
+  .footer-watermark-zone {
+    min-height: clamp(4.25rem, 13vw, 5.5rem);
+    padding-bottom: 0;
+  }
+
+  .anand-watermark {
+    transform: translateY(0.1em);
+  }
+}
+
 .footer-watermark-zone::before {
   content: "";
   position: absolute;
