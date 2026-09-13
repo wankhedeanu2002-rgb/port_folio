@@ -9,10 +9,8 @@ import {
 } from "react";
 import {
   AUDIO_STORAGE_KEY,
-  bootstrapAudioOnLoad,
   disableAudio,
   enableAudio,
-  ensureMusicPlaying,
   isAudioEnabled,
   isInteractiveAudioTarget,
   isMobileAudioContext,
@@ -33,8 +31,8 @@ interface SoundContextValue {
 const SoundContext = createContext<SoundContextValue | null>(null);
 
 function readStoredPreference(): boolean {
-  if (typeof window === "undefined") return true;
-  return localStorage.getItem(AUDIO_STORAGE_KEY) !== "false";
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(AUDIO_STORAGE_KEY) === "true";
 }
 
 export function SoundProvider({ children }: { children: ReactNode }) {
@@ -42,8 +40,12 @@ export function SoundProvider({ children }: { children: ReactNode }) {
   const [musicActive, setMusicActive] = useState(false);
 
   useEffect(() => {
+    const syncMusicState = () => {
+      setMusicActive(isMusicPlaying());
+    };
+
     if (!readStoredPreference()) {
-      setAudioEnabled(false);
+      void disableAudio();
       setEnabled(false);
       setMusicActive(false);
       return;
@@ -51,50 +53,20 @@ export function SoundProvider({ children }: { children: ReactNode }) {
 
     setEnabled(true);
     setAudioEnabled(true);
-
-    const syncMusicState = () => {
-      setMusicActive(isMusicPlaying());
-    };
-
-    void bootstrapAudioOnLoad().then(syncMusicState);
-
-    const retryStart = () => {
-      if (localStorage.getItem(AUDIO_STORAGE_KEY) === "false") return;
-      void ensureMusicPlaying().then(syncMusicState);
-    };
-
-    const onVisible = () => {
-      if (document.visibilityState === "visible") retryStart();
-    };
-
-    window.addEventListener("pageshow", retryStart);
-    document.addEventListener("visibilitychange", onVisible);
-
-    const pollId = window.setInterval(() => {
-      if (localStorage.getItem(AUDIO_STORAGE_KEY) !== "false" && !isMusicPlaying()) {
-        void ensureMusicPlaying();
-      }
-      syncMusicState();
-    }, 1500);
+    void enableAudio({ cue: false }).then(syncMusicState);
 
     const onPointerDown = (event: PointerEvent) => {
-      if (localStorage.getItem(AUDIO_STORAGE_KEY) === "false") return;
+      if (!readStoredPreference()) return;
 
-      void ensureMusicPlaying().then(syncMusicState);
-
-      if (isMobileAudioContext()) {
-        if (isInteractiveAudioTarget(event.target)) return;
-        void restartBackgroundMusic();
+      if (isMobileAudioContext() && !isInteractiveAudioTarget(event.target)) {
+        void restartBackgroundMusic().then(syncMusicState);
       }
     };
 
     window.addEventListener("pointerdown", onPointerDown, { passive: true, capture: true });
 
     return () => {
-      window.removeEventListener("pageshow", retryStart);
-      document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("pointerdown", onPointerDown, { capture: true });
-      window.clearInterval(pollId);
     };
   }, []);
 
@@ -124,10 +96,10 @@ export function SoundProvider({ children }: { children: ReactNode }) {
     setAudioEnabled(true);
     const ok = await enableAudio({ cue: true });
     if (ok) {
-      await ensureMusicPlaying();
       setEnabled(true);
       setMusicActive(isMusicPlaying());
     } else {
+      await disableAudio();
       setEnabled(false);
       setMusicActive(false);
       localStorage.setItem(AUDIO_STORAGE_KEY, "false");

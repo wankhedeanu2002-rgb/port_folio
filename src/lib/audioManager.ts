@@ -29,7 +29,6 @@ let lastHover = 0;
 let lastTyping = 0;
 let lastMusicRestart = 0;
 let architectureSoundPlayed = false;
-let unlockListenersAttached = false;
 
 function getSfxContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -49,7 +48,6 @@ function getMusicElement(): HTMLAudioElement {
       musicEl.loop = true;
       musicEl.preload = "auto";
       musicEl.volume = 0;
-      musicEl.autoplay = true;
       musicEl.setAttribute("playsinline", "");
     }
   }
@@ -157,20 +155,6 @@ function playNoise(duration: number, volume: number) {
   source.connect(gain);
   gain.connect(c.destination);
   source.start(t);
-}
-
-function attachGlobalUnlockListeners(): void {
-  if (unlockListenersAttached || typeof window === "undefined") return;
-  unlockListenersAttached = true;
-
-  const attempt = () => {
-    if (localStorage.getItem(STORAGE_KEY) === "false") return;
-    void ensureMusicPlaying();
-  };
-
-  document.addEventListener("pointerdown", attempt, { capture: true, passive: true });
-  document.addEventListener("touchstart", attempt, { capture: true, passive: true });
-  document.addEventListener("keydown", attempt, { capture: true, passive: true });
 }
 
 async function tryUnmuteMusic(): Promise<boolean> {
@@ -484,7 +468,7 @@ export async function primeSound(): Promise<boolean> {
 
 export async function ensureMusicPlaying(): Promise<boolean> {
   if (typeof window === "undefined") return false;
-  if (localStorage.getItem(STORAGE_KEY) === "false") return false;
+  if (localStorage.getItem(STORAGE_KEY) !== "true") return false;
 
   enabled = true;
   const el = getMusicElement();
@@ -525,26 +509,12 @@ export async function bootstrapAudioOnLoad(): Promise<void> {
   const el = getMusicElement();
   el.volume = 0;
 
-  if (localStorage.getItem(STORAGE_KEY) === "false") {
+  if (localStorage.getItem(STORAGE_KEY) !== "true") {
     enabled = false;
     el.pause();
     return;
   }
 
   enabled = true;
-  attachGlobalUnlockListeners();
-
   await ensureMusicPlaying();
-
-  const retry = () => {
-    if (localStorage.getItem(STORAGE_KEY) === "false") return;
-    void ensureMusicPlaying();
-  };
-
-  window.addEventListener("pageshow", retry);
-  window.addEventListener("load", retry);
-
-  for (const ms of [200, 700, 1500, 3000]) {
-    window.setTimeout(retry, ms);
-  }
 }
