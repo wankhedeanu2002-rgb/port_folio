@@ -17,7 +17,6 @@ const MUSIC_RESTART_COOLDOWN = 900;
 const FADE_IN_MS = 2800;
 const HOVER_COOLDOWN = 200;
 const TYPING_COOLDOWN = 120;
-const STORAGE_KEY = "portfolio-audio-enabled";
 
 let enabled = false;
 let musicPlaying = false;
@@ -456,7 +455,6 @@ export function playSfx(type: SfxType): void {
   }
 }
 
-export { STORAGE_KEY as AUDIO_STORAGE_KEY };
 
 export type SoundType = SfxType;
 export const isSoundEnabled = isAudioEnabled;
@@ -468,7 +466,7 @@ export async function primeSound(): Promise<boolean> {
 
 export async function ensureMusicPlaying(): Promise<boolean> {
   if (typeof window === "undefined") return false;
-  if (localStorage.getItem(STORAGE_KEY) !== "true") return false;
+  if (!enabled) return false;
 
   enabled = true;
   const el = getMusicElement();
@@ -508,13 +506,5 @@ export async function bootstrapAudioOnLoad(): Promise<void> {
 
   const el = getMusicElement();
   el.volume = 0;
-
-  if (localStorage.getItem(STORAGE_KEY) !== "true") {
-    enabled = false;
-    el.pause();
-    return;
-  }
-
-  enabled = true;
-  await ensureMusicPlaying();
+  await disableAudio();
 }

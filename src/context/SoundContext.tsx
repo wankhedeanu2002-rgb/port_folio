@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from "react";
 import {
-  AUDIO_STORAGE_KEY,
   disableAudio,
   enableAudio,
   isAudioEnabled,
@@ -30,33 +29,21 @@ interface SoundContextValue {
 
 const SoundContext = createContext<SoundContextValue | null>(null);
 
-function readStoredPreference(): boolean {
-  if (typeof window === "undefined") return false;
-  return localStorage.getItem(AUDIO_STORAGE_KEY) === "true";
-}
-
 export function SoundProvider({ children }: { children: ReactNode }) {
-  const [enabled, setEnabled] = useState(() => readStoredPreference());
+  const [enabled, setEnabled] = useState(false);
   const [musicActive, setMusicActive] = useState(false);
 
   useEffect(() => {
+    void disableAudio();
+    setEnabled(false);
+    setMusicActive(false);
+
     const syncMusicState = () => {
       setMusicActive(isMusicPlaying());
     };
 
-    if (!readStoredPreference()) {
-      void disableAudio();
-      setEnabled(false);
-      setMusicActive(false);
-      return;
-    }
-
-    setEnabled(true);
-    setAudioEnabled(true);
-    void enableAudio({ cue: false }).then(syncMusicState);
-
     const onPointerDown = (event: PointerEvent) => {
-      if (!readStoredPreference()) return;
+      if (!isAudioEnabled()) return;
 
       if (isMobileAudioContext() && !isInteractiveAudioTarget(event.target)) {
         void restartBackgroundMusic().then(syncMusicState);
@@ -88,11 +75,9 @@ export function SoundProvider({ children }: { children: ReactNode }) {
       await disableAudio();
       setEnabled(false);
       setMusicActive(false);
-      localStorage.setItem(AUDIO_STORAGE_KEY, "false");
       return;
     }
 
-    localStorage.setItem(AUDIO_STORAGE_KEY, "true");
     setAudioEnabled(true);
     const ok = await enableAudio({ cue: true });
     if (ok) {
@@ -102,7 +87,6 @@ export function SoundProvider({ children }: { children: ReactNode }) {
       await disableAudio();
       setEnabled(false);
       setMusicActive(false);
-      localStorage.setItem(AUDIO_STORAGE_KEY, "false");
     }
   }, [enabled]);
 

@@ -1,5 +1,4 @@
 export {
-  AUDIO_STORAGE_KEY,
   disableAudio,
   enableAudio,
   ensureMusicPlaying,
